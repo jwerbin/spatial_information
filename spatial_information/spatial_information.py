@@ -21,6 +21,7 @@ def calculate_kspace_probability_array(data: np.array, **kwargs) -> np.array:
     It uses the following mathematical properties
         1. The fourier coeffiecents of random images are guassianly distributed.
         2. Standard Deviation of image values in real space is the same as the standard deviation of fourier coeffiecents
+           This comes directly from [Parseval's Theorem](https://en.wikipedia.org/wiki/Parseval%27s_theorem)
 
     Taking these two together we can calculate how likely a particular fourier coefficent could have come from a random image. 
     

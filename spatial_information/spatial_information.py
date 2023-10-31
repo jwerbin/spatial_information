@@ -85,7 +85,7 @@ def calculate_image_entropy(data: np.array, bin_size, bin_range):
 
     num= data.size
     hks = 2 * num * np.sum( np.multiply(normed, np.log(normed)))
-    retunr hks
+    return hks
 
 
 def kspace_information(data: np.array, bin_size:float = 0.01, bin_range: Tuple[float, float], **kwargs) -> float:

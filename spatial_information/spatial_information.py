@@ -5,6 +5,7 @@ Author: Jeffrey L. Werbin
 """
 import numpy as np
 from scipy.fft import fft, fft2, fftn
+from scipy.stats import norm
 from typing import Tuple
 
 
@@ -16,7 +17,7 @@ def fft_calc(data: np.array, **kwargs) -> np.array:
     return fft_method.get(len(data.shape), fftn)(data, **kwargs)
 
 
-def calculate_kspace_probability_array(data: np.array, **kwargs) -> np.array:
+def calculate_kspace_probability_array(data: np.array, step: float = 0.005, **kwargs) -> np.array:
     """
     Calculates the frequency (K-space) probability in accordance with the paper Heinz et. al. 2009.
     It uses the following mathematical properties
@@ -32,6 +33,7 @@ def calculate_kspace_probability_array(data: np.array, **kwargs) -> np.array:
     inputs:
 
         data,               An N dimensional array of real numbers
+        step,               Number of sigma to integrate over from x - step*sigma to x + step*sigma
 
     outputs:
         probabilities,      An N dimensional array the same size as data
@@ -41,19 +43,17 @@ def calculate_kspace_probability_array(data: np.array, **kwargs) -> np.array:
     std = np.std(centered)
 
     # Calculate the exponent of the guassian
-    def normalize(a: np.array, std):
-        exp = -1 * np.power(np.abs(a), 2) / (2 * std ** 2)
-        return np.exp(exp) / (std * np.sqrt(2*np.pi))
+    def guassian_prob(a: np.array, std, step):
+        return norm.cdf(a + step*std, loc=0, scale=std) - norm.cdf(a - step*std, loc=0, scale=std)
 
     transformed = fft_calc(centered)
-    Iks_real = normalize(np.real(transformed), std)
-    Iks_imag = normalize(np.imag(transformed), std)
+    Iks_real = guassian_prob(np.real(transformed), std)
+    Iks_imag = guassian_prob(np.imag(transformed), std)
 
-    # The guassian transform reflects the point estimate of the probability 
     return Iks_real, Iks_imag
 
 
-def calculate_spatial_information(data: np.array, **kwargs) -> np.array:
+def calculate_spatial_information(data: np.array, step: float = 0.005, **kwargs) -> np.array:
     """
     Calculates the spatial en of each fourier coefficent of the array.
     Using the Shannon definition of informatio -log(p) and calculating p of each coefficent
@@ -62,13 +62,14 @@ def calculate_spatial_information(data: np.array, **kwargs) -> np.array:
     inputs:
 
         data,               An N dimensional array of real numbers
+        step,               Number of sigma to integrate over from x - step*sigma to x + step*sigma
 
     outputs:
 
         Iks_real,      An N dimensional array the same size as data. Containing the information of revalue coeffs
         Iks_imag,      An N dimensional array the same size as data. Containing the information of revalue coeffs
     """
-    p_r, p_i = calculate_kspace_probability_array(data, **kwargs)
+    p_r, p_i = calculate_kspace_probability_array(data, step=step, **kwargs)
     return -1 * np.log(p_r), -1 * np.log(p_i)
 
 
@@ -76,19 +77,17 @@ def calculate_image_entropy(data: np.array, bin_size, bin_range):
     """"""
     centered = data - np.mean(data)
     std = np.std(centered)
-
-    b = np.arange(bin_range[0] *std, bin_range[1] * std, bin_size * std)
+    step = bin_size * std
+    b = np.arange(bin_range[0] *std, bin_range[1] * std + step, step)
     b = np.append(b, bin_range[1] * std)
 
-    h, bins = np.histogram(data, bins=b)
-    normed = h / np.sum(h)
-
+    p = norm.cdf(b[1:], loc=0, scale=std) - norm.cdf(b[:-1], loc=0, scale=std)
     num= data.size
-    hks = 2 * num * np.sum( np.multiply(normed, np.log(normed)))
+    hks = -2 * num * np.sum( np.multiply(p, np.log(p)))
     return hks
 
 
-def kspace_information(data: np.array, bin_size:float = 0.01, bin_range: Tuple[float, float], **kwargs) -> float:
+def kspace_information(data: np.array, bin_size:float = 0.01, bin_range: Tuple[float, float] = (-10, 10), **kwargs) -> float:
     """
     Calculates K Space en of an array in accordance with
     Heinz, W.F., Werbin, J.L., Lattman, E.E., & Hoh, J.H. (2009). Computing Spatial Information from Fourier Coefficient Distributions. The Journal of Membrane Biology, 241, 59-68.
@@ -110,5 +109,5 @@ def kspace_information(data: np.array, bin_size:float = 0.01, bin_range: Tuple[f
     """
 
     h_ks = calculate_image_entropy(data, bin_size, bin_range)
-    Iks_r, Iks_im = calculate_spatial_information
-    return h_ks - np.sum(Iks_r) - np.sum(Iks_im) 
+    Iks_r, Iks_im = calculate_spatial_information(data, step=bin_size/2)
+    return h_ks - np.nansum(Iks_r) - np.nansum(Iks_im) 
